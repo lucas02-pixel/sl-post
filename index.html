@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>sulegal postagens</title>
+  <link rel="stylesheet" href="./style.css">
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>SL Postagens</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>SL Postagens</h1>
+
+    <div id="userInput" style="margin-bottom: 20px;">
+      <input type="text" id="userName" placeholder="Digite seu nome" />
+      <button id="btnEnter">Entrar</button>
+    </div>
+
+    <div id="postForm" style="display:none; margin-bottom: 20px;">
+      <textarea id="newPost" placeholder="O que você quer compartilhar?"></textarea>
+      <button id="btnPost">Publicar</button>
+    </div>
+
+    <div id="feed">
+      <p class="login-required">Digite seu nome para ver as postagens.</p>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <!-- Seu JS separado -->
+  <script src="app.js"></script>
+</body>
+</html>
+<!-- partial -->
+  <script  src="./script.js"></script>
+
+</body>
+</html>
