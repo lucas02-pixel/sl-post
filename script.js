@@ -160,6 +160,88 @@ function loadComments(postId) {
         </div>
       `);
     });
+    
+// Passo 1: Configuração do Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyBATZMxOgepqDJAd-J_X9BGq5kSrnXWSZA",
+  authDomain: "sl-postagens.firebaseapp.com",
+  projectId: "sl-postagens",
+  storageBucket: "sl-postagens.firebasestorage.app",
+  messagingSenderId: "336664673765",
+  appId: "1:336664673765:web:a2bc241e70a7b291d3430c"
+};
+
+// Passo 2: Inicializar Firebase
+firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
+
+// Passo 3: Criar Service Worker dinamicamente
+const swCode = `
+importScripts('https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js ');
+importScripts('https://www.gstatic.com/firebasejs/9.6.10/firebase-messaging-compat.js ');
+
+firebase.initializeApp({
+  apiKey: "${firebaseConfig.apiKey}",
+  authDomain: "${firebaseConfig.authDomain}",
+  projectId: "${firebaseConfig.projectId}",
+  storageBucket: "${firebaseConfig.storageBucket}",
+  messagingSenderId: "${firebaseConfig.messagingSenderId}",
+  appId: "${firebaseConfig.appId}"
+});
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+  console.log('[SW] Mensagem recebida:', payload.notification);
+  const { title, body, icon } = payload.notification;
+
+  self.registration.showNotification(title, {
+    body,
+    icon: icon || '/favicon.ico',
+    badge: '/favicon.ico'
+  });
+});
+`;
+
+// Passo 4: Registrar o Service Worker dinamicamente
+if ("serviceWorker" in navigator && firebase.messaging.isSupported()) {
+  const blob = new Blob([swCode], { type: "application/javascript" });
+  const url = URL.createObjectURL(blob);
+
+  navigator.serviceWorker
+    .register(url)
+    .then((registration) => {
+      console.log("Service Worker registrado com sucesso!");
+      messaging.useServiceWorker(registration);
+
+      // Pedir permissão para notificações
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          console.log("Permissão concedida para notificações");
+
+          // Obter token FCM
+          messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' })
+            .then((token) => {
+              console.log("Token FCM obtido:", token);
+
+              // Salve esse token no Firestore ou use no Firebase Console
+              alert("Você está pronto para receber notificações!");
+            })
+            .catch((err) => {
+              console.error("Erro ao obter token FCM:", err);
+            });
+        } else {
+          console.warn("Permissão negada para notificações.");
+        }
+      });
+    })
+    .catch((err) => {
+      console.error("Erro ao registrar Service Worker:", err);
+    });
+} else {
+  console.warn("Notificações push não são suportadas neste navegador.");
+}
+
 
     commentsListDiv.innerHTML = commentsHTML.join("");
   }, err => {
