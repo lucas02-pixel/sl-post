@@ -1,5 +1,3 @@
-
-</script>
 // Config Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyBATZMxOgepqDJAd-J_X9BGq5kSrnXWSZA",
@@ -7,13 +5,13 @@ const firebaseConfig = {
   projectId: "sl-postagens",
   storageBucket: "sl-postagens.firebasestorage.app",
   messagingSenderId: "336664673765",
-  appId: "1:336664673765:web:a2bc241e70a7b291d3430c",
-  measurementId: "G-W8XS75XQE0"
+  appId: "1:336664673765:web:a2bc241e70a7b291d3430c"
 };
 
 // Inicializa Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const messaging = firebase.messaging.isSupported() ? firebase.messaging() : null;
 
 let currentUser = null;
 
@@ -23,7 +21,6 @@ const btnEnter = document.getElementById("btnEnter");
 const postForm = document.getElementById("postForm");
 const btnPost = document.getElementById("btnPost");
 const feed = document.getElementById("feed");
-const userInputDiv = document.getElementById("userInput");
 
 // Entrar
 btnEnter.onclick = () => {
@@ -33,8 +30,8 @@ btnEnter.onclick = () => {
     return;
   }
   currentUser = name;
-  userInputDiv.style.display = "none";
-  postForm.style.display = "block";
+  document.getElementById("userInput").style.display = "none";
+  document.getElementById("postForm").style.display = "block";
   loadPosts();
 };
 
@@ -80,7 +77,7 @@ function toggleComments(postId) {
   commentsDiv.style.display = commentsDiv.style.display === "none" ? "block" : "none";
 }
 
-// Adicionar comentário (em subcoleção)
+// Adicionar comentário
 function addComment(postId) {
   const input = document.getElementById(`comment-input-${postId}`);
   const texto = input.value.trim();
@@ -97,7 +94,7 @@ function addComment(postId) {
   }).catch(err => alert("Erro ao comentar: " + err.message));
 }
 
-// Carregar posts e seus comentários
+// Carregar posts
 function loadPosts() {
   db.collection("postagens")
     .orderBy("data", "desc")
@@ -114,7 +111,6 @@ function loadPosts() {
         const likeCount = post.curtidas ? Object.keys(post.curtidas).length : 0;
         const liked = post.curtidas && post.curtidas[currentUser];
 
-        // Post container
         const div = document.createElement("div");
         div.className = "post";
 
@@ -142,7 +138,7 @@ function loadPosts() {
     });
 }
 
-// Carregar comentários para cada post
+// Carregar comentários
 function loadComments(postId) {
   const commentsListDiv = document.getElementById(`comments-list-${postId}`);
   const comentariosRef = db.collection("postagens").doc(postId).collection("comentarios").orderBy("data", "asc");
@@ -162,34 +158,22 @@ function loadComments(postId) {
         </div>
       `);
     });
-    
-// Passo 1: Configuração do Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyBATZMxOgepqDJAd-J_X9BGq5kSrnXWSZA",
-  authDomain: "sl-postagens.firebaseapp.com",
-  projectId: "sl-postagens",
-  storageBucket: "sl-postagens.firebasestorage.app",
-  messagingSenderId: "336664673765",
-  appId: "1:336664673765:web:a2bc241e70a7b291d3430c"
-};
 
-// Passo 2: Inicializar Firebase
-firebase.initializeApp(firebaseConfig);
-const messaging = firebase.messaging();
+    commentsListDiv.innerHTML = commentsHTML.join("");
+  }, err => {
+    commentsListDiv.innerHTML = "<p>Erro ao carregar comentários</p>";
+    console.error(err);
+  });
+}
 
-// Passo 3: Criar Service Worker dinamicamente
-const swCode = `
-importScripts('https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js ');
-importScripts('https://www.gstatic.com/firebasejs/9.6.10/firebase-messaging-compat.js ');
+// ========== NOTIFICAÇÕES PUSH (Service Worker dinâmico) ==========
 
-firebase.initializeApp({
-  apiKey: "${firebaseConfig.apiKey}",
-  authDomain: "${firebaseConfig.authDomain}",
-  projectId: "${firebaseConfig.projectId}",
-  storageBucket: "${firebaseConfig.storageBucket}",
-  messagingSenderId: "${firebaseConfig.messagingSenderId}",
-  appId: "${firebaseConfig.appId}"
-});
+if (messaging && "serviceWorker" in navigator) {
+  const swCode = `
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js ');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js ');
+
+firebase.initializeApp(${JSON.stringify(firebaseConfig)});
 
 const messaging = firebase.messaging();
 
@@ -203,15 +187,12 @@ messaging.onBackgroundMessage((payload) => {
     badge: '/favicon.ico'
   });
 });
-`;
+  `;
 
-// Passo 4: Registrar o Service Worker dinamicamente
-if ("serviceWorker" in navigator && firebase.messaging.isSupported()) {
   const blob = new Blob([swCode], { type: "application/javascript" });
   const url = URL.createObjectURL(blob);
 
-  navigator.serviceWorker
-    .register(url)
+  navigator.serviceWorker.register(url)
     .then((registration) => {
       console.log("Service Worker registrado com sucesso!");
       messaging.useServiceWorker(registration);
@@ -225,8 +206,6 @@ if ("serviceWorker" in navigator && firebase.messaging.isSupported()) {
           messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' })
             .then((token) => {
               console.log("Token FCM obtido:", token);
-
-              // Salve esse token no Firestore ou use no Firebase Console
               alert("Você está pronto para receber notificações!");
             })
             .catch((err) => {
@@ -242,12 +221,4 @@ if ("serviceWorker" in navigator && firebase.messaging.isSupported()) {
     });
 } else {
   console.warn("Notificações push não são suportadas neste navegador.");
-}
-
-
-    commentsListDiv.innerHTML = commentsHTML.join("");
-  }, err => {
-    commentsListDiv.innerHTML = "<p>Erro ao carregar comentários</p>";
-    console.error(err);
-  });
 }
