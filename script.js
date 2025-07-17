@@ -11,7 +11,11 @@ const firebaseConfig = {
 // Inicializa Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const messaging = firebase.messaging.isSupported() ? firebase.messaging() : null;
+
+let messaging = null;
+if (firebase.messaging && firebase.messaging.isSupported) {
+  messaging = firebase.messaging();
+}
 
 let currentUser = null;
 
@@ -43,7 +47,7 @@ btnPost.onclick = () => {
   db.collection("postagens").add({
     texto,
     nomeCanal: currentUser,
-     firebase.firestore.FieldValue.serverTimestamp(),
+    data: firebase.firestore.FieldValue.serverTimestamp(),
     curtidas: {}
   }).then(() => {
     document.getElementById("newPost").value = "";
