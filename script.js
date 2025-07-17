@@ -43,7 +43,7 @@ btnPost.onclick = () => {
   db.collection("postagens").add({
     texto,
     nomeCanal: currentUser,
-    data: firebase.firestore.FieldValue.serverTimestamp(),
+     firebase.firestore.FieldValue.serverTimestamp(),
     curtidas: {}
   }).then(() => {
     document.getElementById("newPost").value = "";
