@@ -12,9 +12,12 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// Inicializa Messaging
 let messaging = null;
 if (firebase.messaging && firebase.messaging.isSupported()) {
   messaging = firebase.messaging();
+} else {
+  console.warn("Notificações push não são suportadas neste navegador.");
 }
 
 let currentUser = null;
@@ -170,39 +173,49 @@ function loadComments(postId) {
   });
 }
 
-// ========== NOTIFICAÇÕES PUSH (em primeiro plano) ==========
+// ========== NOTIFICAÇÕES PUSH (Service Worker físico) ==========
 
 if (messaging) {
-  // Pedir permissão
-  Notification.requestPermission().then((permission) => {
-    if (permission === "granted") {
-      console.log("Permissão concedida para notificações");
+  // Registrar Service Worker físico
+  navigator.serviceWorker.register('/firebase-messaging-sw.js')
+    .then((registration) => {
+      console.log("Service Worker registrado com sucesso!");
+      messaging.useServiceWorker(registration);
 
-      // Obter token FCM
-      messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' })
-        .then((token) => {
-          console.log("Token FCM obtido:", token);
-        })
-        .catch((err) => {
-          console.error("Erro ao obter token FCM:", err);
-        });
+      // Pedir permissão
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          console.log("Permissão concedida para notificações");
 
-      // Escutar mensagens em primeiro plano
-      messaging.onMessage((payload) => {
-        console.log("Mensagem recebida em primeiro plano:", payload);
-        const { title, body, icon } = payload.notification;
+          // Obter token FCM
+          messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' })
+            .then((token) => {
+              console.log("Token FCM obtido:", token);
+            })
+            .catch((err) => {
+              console.error("Erro ao obter token FCM:", err);
+            });
 
-        if (Notification.permission === "granted") {
-          new Notification(title, {
-            body,
-            icon: icon || '/favicon.ico'
+          // Escutar notificações em primeiro plano
+          messaging.onMessage((payload) => {
+            console.log("Mensagem recebida em primeiro plano:", payload);
+            const { title, body, icon } = payload.notification;
+
+            if (Notification.permission === "granted") {
+              new Notification(title, {
+                body,
+                icon: icon || '/favicon.ico'
+              });
+            }
           });
+        } else {
+          console.warn("Permissão negada para notificações.");
         }
       });
-    } else {
-      console.warn("Permissão negada para notificações.");
-    }
-  });
+    })
+    .catch((err) => {
+      console.error("Erro ao registrar Service Worker:", err);
+    });
 } else {
-  console.warn("Notificações push não são suportadas neste navegador.");
+  console.warn("Firebase Messaging não é suportado neste navegador.");
 }
