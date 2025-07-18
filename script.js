@@ -13,7 +13,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
 let messaging = null;
-if (firebase.messaging && firebase.messaging.isSupported) {
+if (firebase.messaging && firebase.messaging.isSupported()) {
   messaging = firebase.messaging();
 }
 
@@ -170,59 +170,39 @@ function loadComments(postId) {
   });
 }
 
-// ========== NOTIFICAÇÕES PUSH (Service Worker dinâmico) ==========
+// ========== NOTIFICAÇÕES PUSH (em primeiro plano) ==========
 
-if (messaging && "serviceWorker" in navigator) {
-  const swCode = `
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js ');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js ');
+if (messaging) {
+  // Pedir permissão
+  Notification.requestPermission().then((permission) => {
+    if (permission === "granted") {
+      console.log("Permissão concedida para notificações");
 
-firebase.initializeApp(${JSON.stringify(firebaseConfig)});
+      // Obter token FCM
+      messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' })
+        .then((token) => {
+          console.log("Token FCM obtido:", token);
+        })
+        .catch((err) => {
+          console.error("Erro ao obter token FCM:", err);
+        });
 
-const messaging = firebase.messaging();
+      // Escutar mensagens em primeiro plano
+      messaging.onMessage((payload) => {
+        console.log("Mensagem recebida em primeiro plano:", payload);
+        const { title, body, icon } = payload.notification;
 
-messaging.onBackgroundMessage((payload) => {
-  console.log('[SW] Mensagem recebida:', payload.notification);
-  const { title, body, icon } = payload.notification;
-
-  self.registration.showNotification(title, {
-    body,
-    icon: icon || '/favicon.ico',
-    badge: '/favicon.ico'
-  });
-});
-  `;
-
-  const blob = new Blob([swCode], { type: "application/javascript" });
-  const url = URL.createObjectURL(blob);
-
-  navigator.serviceWorker.register(url)
-    .then((registration) => {
-      console.log("Service Worker registrado com sucesso!");
-      messaging.useServiceWorker(registration);
-
-      // Pedir permissão para notificações
-      Notification.requestPermission().then((permission) => {
-        if (permission === "granted") {
-          console.log("Permissão concedida para notificações");
-
-          // Obter token FCM
-          messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' })
-            .then((token) => {
-              console.log("Token FCM obtido:", token);
-              alert("Você está pronto para receber notificações!");
-            })
-            .catch((err) => {
-              console.error("Erro ao obter token FCM:", err);
-            });
-        } else {
-          console.warn("Permissão negada para notificações.");
+        if (Notification.permission === "granted") {
+          new Notification(title, {
+            body,
+            icon: icon || '/favicon.ico'
+          });
         }
       });
-    })
-    .catch((err) => {
-      console.error("Erro ao registrar Service Worker:", err);
-    });
+    } else {
+      console.warn("Permissão negada para notificações.");
+    }
+  });
 } else {
   console.warn("Notificações push não são suportadas neste navegador.");
 }
