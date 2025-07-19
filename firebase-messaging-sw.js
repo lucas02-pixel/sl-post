@@ -16,8 +16,7 @@ messaging.onBackgroundMessage(function(payload) {
   console.log('[firebase-messaging-sw.js] Mensagem recebida no background ', payload);
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: payload.notification.icon || '/favicon.ico'
+    body: payload.notification.body
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
