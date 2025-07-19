@@ -38,9 +38,9 @@ btnEnter.onclick = () => {
   }
   currentUser = name;
   document.getElementById("userInput").style.display = "none";
-  document.getElementById("postForm").style.display = "block";
+  postForm.style.display = "block";
   loadPosts();
-  setupMessaging();
+  setupMessaging(); // inicia notificações quando entra
 };
 
 // Publicar post
@@ -174,52 +174,46 @@ function loadComments(postId) {
   });
 }
 
-// Setup notificações push
+// ========== NOTIFICAÇÕES PUSH ==========
+
 function setupMessaging() {
   if (!messaging) return;
 
-  // Registra o service worker
   navigator.serviceWorker.register('/sl-post/firebase-messaging-sw.js')
-    .then((registration) => {
+    .then(registration => {
       console.log("Service Worker registrado com sucesso:", registration);
 
-      // NÃO USE messaging.useServiceWorker(registration); --> removido no Firebase v9+
-
-      // Solicita permissão para notificações
       return Notification.requestPermission();
     })
-    .then((permission) => {
+    .then(permission => {
       if (permission !== "granted") {
         console.warn("Permissão negada para notificações.");
         return;
       }
       console.log("Permissão concedida para notificações");
 
-      // Obter token FCM
-      return messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' });
+      return messaging.getToken({
+        vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA'
+      });
     })
-    .then((token) => {
+    .then(token => {
       if (!token) {
-        console.warn("Não foi possível obter o token de notificação.");
+        console.warn("Token FCM não foi obtido.");
         return;
       }
       console.log("Token FCM obtido:", token);
-
-      // Aqui você pode enviar o token para o seu backend para notificações push direcionadas
+      // Envie para backend se quiser
     })
-    .catch((err) => {
+    .catch(err => {
       console.error("Erro ao configurar notificações:", err);
     });
 
-  // Receber mensagens em primeiro plano
-  messaging.onMessage((payload) => {
+  messaging.onMessage(payload => {
     console.log("Mensagem recebida em primeiro plano:", payload);
     const { title, body } = payload.notification;
 
     if (Notification.permission === "granted") {
-      new Notification(title, {
-        body,
-      });
+      new Notification(title, { body });
     }
   });
 }
