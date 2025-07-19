@@ -169,7 +169,7 @@ function loadComments(postId) {
 // ==== NOTIFICAÇÕES FIREBASE MESSAGING ====
 
 // Registra o Service Worker
-navigator.serviceWorker.register('/firebase-messaging-sw.js')
+navigator.serviceWorker.register('/sl-post/firebase-messaging-sw.js')
   .then(registration => {
     console.log('Service Worker registrado com sucesso:', registration);
     messaging.useServiceWorker(registration);
