@@ -11,7 +11,14 @@ const firebaseConfig = {
 // Inicializa Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const messaging = firebase.messaging();
+
+// Inicializa Messaging
+let messaging = null;
+if (firebase.messaging && firebase.messaging.isSupported()) {
+  messaging = firebase.messaging();
+} else {
+  console.warn("Notificações push não são suportadas neste navegador.");
+}
 
 let currentUser = null;
 
@@ -33,6 +40,7 @@ btnEnter.onclick = () => {
   document.getElementById("userInput").style.display = "none";
   document.getElementById("postForm").style.display = "block";
   loadPosts();
+  setupMessaging();
 };
 
 // Publicar post
@@ -166,42 +174,52 @@ function loadComments(postId) {
   });
 }
 
-// ==== NOTIFICAÇÕES FIREBASE MESSAGING ====
+// Setup notificações push
+function setupMessaging() {
+  if (!messaging) return;
 
-// Registra o Service Worker
-navigator.serviceWorker.register('/sl-post/firebase-messaging-sw.js')
-  .then(registration => {
-    console.log('Service Worker registrado com sucesso:', registration);
-    messaging.useServiceWorker(registration);
+  // Registra o service worker
+  navigator.serviceWorker.register('/sl-post/firebase-messaging-sw.js')
+    .then((registration) => {
+      console.log("Service Worker registrado com sucesso:", registration);
 
-    // Pede permissão de notificações
-    return Notification.requestPermission();
-  })
-  .then(permission => {
-    if (permission !== 'granted') {
-      throw new Error('Permissão de notificações negada');
-    }
-    console.log('Permissão para notificações concedida');
+      // NÃO USE messaging.useServiceWorker(registration); --> removido no Firebase v9+
 
-    // Pega token para enviar notificações para este navegador
-    return messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' });
-  })
-  .then(token => {
-    console.log('Token FCM obtido:', token);
-    // Aqui você pode enviar o token para seu backend salvar e usar para enviar notificações
-  })
-  .catch(err => {
-    console.error('Erro ao configurar notificações:', err);
-  });
+      // Solicita permissão para notificações
+      return Notification.requestPermission();
+    })
+    .then((permission) => {
+      if (permission !== "granted") {
+        console.warn("Permissão negada para notificações.");
+        return;
+      }
+      console.log("Permissão concedida para notificações");
 
-// Escuta notificações quando o site está aberto (foreground)
-messaging.onMessage(payload => {
-  console.log('Notificação recebida no primeiro plano:', payload);
-  const { title, body } = payload.notification || {};
-  if (Notification.permission === 'granted') {
-    new Notification(title || 'Notificação', {
-      body
+      // Obter token FCM
+      return messaging.getToken({ vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA' });
+    })
+    .then((token) => {
+      if (!token) {
+        console.warn("Não foi possível obter o token de notificação.");
+        return;
+      }
+      console.log("Token FCM obtido:", token);
+
+      // Aqui você pode enviar o token para o seu backend para notificações push direcionadas
+    })
+    .catch((err) => {
+      console.error("Erro ao configurar notificações:", err);
     });
-  }
-});
 
+  // Receber mensagens em primeiro plano
+  messaging.onMessage((payload) => {
+    console.log("Mensagem recebida em primeiro plano:", payload);
+    const { title, body } = payload.notification;
+
+    if (Notification.permission === "granted") {
+      new Notification(title, {
+        body,
+      });
+    }
+  });
+}
