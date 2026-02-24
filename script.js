@@ -13,36 +13,26 @@ const db = firebase.firestore();
 
 // ================= VARIÁVEIS =================
 let currentUser = null;
-let likedKeywords = {}; // algoritmo
+let likedKeywords = {};
+let lastDoc = null;
+let loading = false;
+let finished = false;
 
+const POSTS_POR_CARGA = 10;
+
+// elementos
 const userNameInput = document.getElementById("userName");
 const btnEnter = document.getElementById("btnEnter");
 const postForm = document.getElementById("postForm");
 const btnPost = document.getElementById("btnPost");
 const feed = document.getElementById("feed");
 
-// ================= LINKS CLICÁVEIS =================
+// ================= LINKS =================
 function formatText(text) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   return text.replace(urlRegex, url =>
     `<a href="${url}" target="_blank">${url}</a>`
   );
-}
-
-// ================= NOTIFICAÇÃO =================
-async function notificarBoasVindas(nome) {
-  if (!("Notification" in window)) return;
-
-  let perm = Notification.permission;
-  if (perm !== "granted") {
-    perm = await Notification.requestPermission();
-  }
-
-  if (perm === "granted") {
-    new Notification("👋 Bem-vindo!", {
-      body: `Olá ${nome}!`,
-    });
-  }
 }
 
 // ================= ENTRAR =================
@@ -56,8 +46,14 @@ btnEnter.onclick = async () => {
   postForm.style.display = "block";
 
   await carregarDados();
-  loadPosts();
-  notificarBoasVindas(name);
+
+  feed.innerHTML = "";
+  lastDoc = null;
+  finished = false;
+
+  carregarMaisPosts();
+
+  window.addEventListener("scroll", verificarScroll);
 };
 
 // ================= POSTAR =================
@@ -77,10 +73,10 @@ btnPost.onclick = async () => {
 
 // ================= LIKE =================
 async function toggleLike(postId, texto) {
-  const postRef = db.collection("postagens").doc(postId);
+  const ref = db.collection("postagens").doc(postId);
 
   await db.runTransaction(async (t) => {
-    const doc = await t.get(postRef);
+    const doc = await t.get(ref);
     const data = doc.data();
     const likes = data.curtidas || {};
 
@@ -93,7 +89,7 @@ async function toggleLike(postId, texto) {
       aprenderTexto(texto);
     }
 
-    t.update(postRef, { curtidas: likes });
+    t.update(ref, { curtidas: likes });
   });
 
   salvarDados();
@@ -101,9 +97,9 @@ async function toggleLike(postId, texto) {
 
 // ================= ALGORITMO =================
 
-// aprende palavras do texto
+// aprender palavras
 function aprenderTexto(texto) {
-  const palavras = texto.toLowerCase().split(" ");
+  const palavras = texto.toLowerCase().split(/\W+/);
 
   palavras.forEach(p => {
     if (p.length < 4) return;
@@ -112,66 +108,116 @@ function aprenderTexto(texto) {
   });
 }
 
-// pontuação de recomendação
-function calcularScore(texto) {
-  const palavras = texto.toLowerCase().split(" ");
+// score inteligente
+function calcularScore(post) {
   let score = 0;
 
+  const palavras = post.texto.toLowerCase().split(/\W+/);
+
+  // 1. palavras que você gosta
   palavras.forEach(p => {
     if (likedKeywords[p]) {
-      score += likedKeywords[p];
+      score += likedKeywords[p] * 5;
     }
   });
+
+  // 2. popularidade
+  const likes = post.curtidas ? Object.keys(post.curtidas).length : 0;
+  score += likes * 2;
+
+  // 3. tempo (posts novos sobem)
+  if (post.data) {
+    const agora = Date.now();
+    const tempoPost = post.data.toDate().getTime();
+    const horas = (agora - tempoPost) / (1000 * 60 * 60);
+
+    score += Math.max(0, 20 - horas); // perde relevância com o tempo
+  }
+
+  // 4. aleatoriedade (não ficar repetitivo)
+  score += Math.random() * 5;
 
   return score;
 }
 
 // ================= CARREGAR POSTS =================
-function loadPosts() {
-  db.collection("postagens")
+async function carregarMaisPosts() {
+  if (loading || finished) return;
+  loading = true;
+
+  let query = db.collection("postagens")
     .orderBy("data", "desc")
-    .onSnapshot(snapshot => {
+    .limit(POSTS_POR_CARGA);
 
-      let posts = [];
+  if (lastDoc) {
+    query = query.startAfter(lastDoc);
+  }
 
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        posts.push({
-          id: doc.id,
-          ...data,
-          score: calcularScore(data.texto)
-        });
-      });
+  const snapshot = await query.get();
 
-      // 🔥 ordenar pelo algoritmo
-      posts.sort((a, b) => b.score - a.score);
+  if (snapshot.empty) {
+    finished = true;
+    loading = false;
+    return;
+  }
 
-      feed.innerHTML = "";
+  lastDoc = snapshot.docs[snapshot.docs.length - 1];
 
-      posts.forEach(post => {
-        const likeCount = post.curtidas ? Object.keys(post.curtidas).length : 0;
-        const liked = post.curtidas && post.curtidas[currentUser];
+  let posts = [];
 
-        const isYou = post.nomeCanal === currentUser;
+  snapshot.forEach(doc => {
+    const data = doc.data();
 
-        const div = document.createElement("div");
-        div.className = "post";
-
-        div.innerHTML = `
-          ${isYou ? '<div class="you-tag">Você</div>' : ''}
-          <strong>${post.nomeCanal}</strong>
-          <p>${formatText(post.texto)}</p>
-
-          <button onclick="toggleLike('${post.id}', \`${post.texto}\`)">
-            ${liked ? 'Curtido' : 'Curtir'}
-          </button>
-
-          <span>${likeCount} curtidas</span>
-        `;
-
-        feed.appendChild(div);
-      });
+    posts.push({
+      id: doc.id,
+      ...data,
+      score: calcularScore(data)
     });
+  });
+
+  // 🔥 ordena pelo score
+  posts.sort((a, b) => b.score - a.score);
+
+  renderPosts(posts);
+
+  loading = false;
+}
+
+// ================= RENDER =================
+function renderPosts(posts) {
+  posts.forEach(post => {
+    const likeCount = post.curtidas ? Object.keys(post.curtidas).length : 0;
+    const liked = post.curtidas && post.curtidas[currentUser];
+    const isYou = post.nomeCanal === currentUser;
+
+    const div = document.createElement("div");
+    div.className = "post";
+
+    div.innerHTML = `
+      ${isYou ? '<div class="you-tag">Você</div>' : ''}
+      <strong>${post.nomeCanal}</strong>
+      <p>${formatText(post.texto)}</p>
+
+      <button onclick="toggleLike('${post.id}', \`${post.texto}\`)">
+        ${liked ? 'Curtido' : 'Curtir'}
+      </button>
+
+      <span>${likeCount} curtidas</span>
+    `;
+
+    feed.appendChild(div);
+  });
+}
+
+// ================= SCROLL INFINITO =================
+function verificarScroll() {
+  const scrollTop = window.scrollY;
+  const altura = document.body.offsetHeight;
+  const tela = window.innerHeight;
+
+  if (scrollTop + tela >= altura - 200) {
+    carregarMaisPosts();
+  }
 }
 
 // ================= SALVAR DADOS =================
