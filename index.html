@@ -1,37 +1,41 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>SL Postagens</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Garanta que o CSS está com o nome certo -->
-  <link rel="stylesheet" href="style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>SL Postagens</h1>
 
-    <div id="userInput" style="margin-bottom: 20px;">
-      <input type="text" id="userName" placeholder="Digite seu nome" />
-      <button id="btnEnter">Entrar</button>
-    </div>
+<div class="container">
 
-    <div id="postForm" style="display:none; margin-bottom: 20px;">
-      <textarea id="newPost" placeholder="O que você quer compartilhar?"></textarea>
-      <button id="btnPost">Publicar</button>
-    </div>
+  <h1>SL Postagens</h1>
 
-    <div id="feed">
-      <p class="login-required">Digite seu nome para ver as postagens.</p>
-    </div>
+  <!-- Login -->
+  <div id="userInput">
+    <input type="text" id="userName" placeholder="Digite seu nome">
+    <button id="btnEnter">Entrar</button>
   </div>
 
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js "></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js "></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js "></script>
+  <!-- Post -->
+  <div id="postForm" style="display:none;">
+    <textarea id="newPost" placeholder="O que você quer compartilhar?"></textarea>
+    <button id="btnPost">Publicar</button>
+  </div>
 
-  <!-- Seu script principal -->
-  <script src="script.js"></script>
+  <!-- Feed -->
+  <div id="feed">
+    <p class="login-required">Digite seu nome para ver as postagens.</p>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script src="script.js"></script>
+
 </body>
 </html>
