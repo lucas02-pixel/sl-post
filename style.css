@@ -1,115 +1,49 @@
-/* Reset básico */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
 body {
-  font-family: 'Segoe UI', sans-serif;
-  margin: 0;
+  font-family: Arial;
+  background: #121212;
+  color: #eee;
   padding: 20px;
-  background-color: #121212;
-  color: #e0e0e0;
 }
 
 .container {
   max-width: 700px;
   margin: auto;
-  padding: 20px;
-  background-color: #1e1e1e;
-  border-radius: 10px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
-h1 {
-  text-align: center;
-  color: #00ffcc;
-  margin-bottom: 20px;
-}
-
-/* Formulários */
-input[type="text"],
-textarea {
+input, textarea {
   width: 100%;
   padding: 10px;
-  margin-bottom: 10px;
-  border: none;
-  border-radius: 6px;
-  background-color: #2c2c2c;
-  color: #e0e0e0;
-  font-size: 16px;
-  resize: vertical;
-}
-
-/* Botões */
-button {
-  background-color: #00ffcc;
-  color: #121212;
-  padding: 10px 15px;
-  border: none;
-  border-radius: 6px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  margin-right: 10px;
-}
-
-button:hover {
-  background-color: #00d1a8;
-}
-
-.secondary-btn {
-  background-color: #444;
+  margin: 10px 0;
+  background: #222;
   color: #fff;
-}
-
-.secondary-btn:hover {
-  background-color: #666;
-}
-
-/* Posts */
-.post {
-  background-color: #2c2c2c;
-  padding: 15px;
-  margin-top: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
-}
-
-/* Botão de curtir */
-.like-btn {
-  background-color: #3a3a3a;
   border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: 6px;
+}
+
+button {
+  padding: 10px;
+  background: #00ffcc;
+  border: none;
+  border-radius: 6px;
   cursor: pointer;
-  margin-right: 10px;
-  font-size: 14px;
-  color: #e0e0e0;
 }
 
-.like-btn.liked {
-  background-color: #00ffcc;
-  color: #121212;
+.post {
+  background: #1e1e1e;
+  padding: 15px;
+  margin-top: 15px;
+  border-radius: 8px;
 }
 
-/* Comentários */
-.comments {
+.like-btn {
   margin-top: 10px;
 }
 
-.comment {
-  margin-left: 0;
-  margin-bottom: 6px;
-  font-size: 14px;
-  color: #bfbfbf;
+.you-tag {
+  color: #00ffcc;
+  font-size: 12px;
 }
 
-/* Mensagem de login */
-.login-required {
-  text-align: center;
-  color: #888;
-  font-style: italic;
-  margin-top: 20px;
+a {
+  color: #00ffcc;
 }
