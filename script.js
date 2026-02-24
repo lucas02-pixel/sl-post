@@ -1,4 +1,4 @@
-// Config Firebase
+// ================= FIREBASE =================
 const firebaseConfig = {
   apiKey: "AIzaSyBATZMxOgepqDJAd-J_X9BGq5kSrnXWSZA",
   authDomain: "sl-postagens.firebaseapp.com",
@@ -8,63 +8,79 @@ const firebaseConfig = {
   appId: "1:336664673765:web:a2bc241e70a7b291d3430c"
 };
 
-// Inicializa Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-// Inicializa Messaging
-let messaging = null;
-if (firebase.messaging && firebase.messaging.isSupported()) {
-  messaging = firebase.messaging();
-} else {
-  console.warn("Notificações push não são suportadas neste navegador.");
-}
-
+// ================= VARIÁVEIS =================
 let currentUser = null;
+let likedKeywords = {}; // algoritmo
 
-// Elementos
 const userNameInput = document.getElementById("userName");
 const btnEnter = document.getElementById("btnEnter");
 const postForm = document.getElementById("postForm");
 const btnPost = document.getElementById("btnPost");
 const feed = document.getElementById("feed");
 
-// Entrar
-btnEnter.onclick = () => {
-  const name = userNameInput.value.trim();
-  if (!name) {
-    alert("Digite seu nome para continuar.");
-    return;
+// ================= LINKS CLICÁVEIS =================
+function formatText(text) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text.replace(urlRegex, url =>
+    `<a href="${url}" target="_blank">${url}</a>`
+  );
+}
+
+// ================= NOTIFICAÇÃO =================
+async function notificarBoasVindas(nome) {
+  if (!("Notification" in window)) return;
+
+  let perm = Notification.permission;
+  if (perm !== "granted") {
+    perm = await Notification.requestPermission();
   }
+
+  if (perm === "granted") {
+    new Notification("👋 Bem-vindo!", {
+      body: `Olá ${nome}!`,
+    });
+  }
+}
+
+// ================= ENTRAR =================
+btnEnter.onclick = async () => {
+  const name = userNameInput.value.trim();
+  if (!name) return alert("Digite seu nome");
+
   currentUser = name;
+
   document.getElementById("userInput").style.display = "none";
   postForm.style.display = "block";
+
+  await carregarDados();
   loadPosts();
-  setupMessaging(); // inicia notificações quando entra
+  notificarBoasVindas(name);
 };
 
-// Publicar post
-btnPost.onclick = () => {
+// ================= POSTAR =================
+btnPost.onclick = async () => {
   const texto = document.getElementById("newPost").value.trim();
-  if (!texto) return alert("Escreva algo para postar.");
+  if (!texto) return alert("Escreva algo");
 
-  db.collection("postagens").add({
+  await db.collection("postagens").add({
     texto,
     nomeCanal: currentUser,
     data: firebase.firestore.FieldValue.serverTimestamp(),
     curtidas: {}
-  }).then(() => {
-    document.getElementById("newPost").value = "";
-  }).catch(err => alert("Erro ao publicar: " + err.message));
+  });
+
+  document.getElementById("newPost").value = "";
 };
 
-// Curtir / descurtir post
-function toggleLike(postId) {
+// ================= LIKE =================
+async function toggleLike(postId, texto) {
   const postRef = db.collection("postagens").doc(postId);
-  db.runTransaction(async (transaction) => {
-    const doc = await transaction.get(postRef);
-    if (!doc.exists) throw "Post não encontrado.";
 
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(postRef);
     const data = doc.data();
     const likes = data.curtidas || {};
 
@@ -72,148 +88,104 @@ function toggleLike(postId) {
       delete likes[currentUser];
     } else {
       likes[currentUser] = true;
+
+      // 🧠 aprende palavras
+      aprenderTexto(texto);
     }
 
-    transaction.update(postRef, { curtidas: likes });
-  }).catch(err => alert("Erro ao curtir: " + err));
+    t.update(postRef, { curtidas: likes });
+  });
+
+  salvarDados();
 }
 
-// Mostrar/ocultar comentários
-function toggleComments(postId) {
-  const commentsDiv = document.getElementById(`comments-${postId}`);
-  if (!commentsDiv) return;
-  commentsDiv.style.display = commentsDiv.style.display === "none" ? "block" : "none";
+// ================= ALGORITMO =================
+
+// aprende palavras do texto
+function aprenderTexto(texto) {
+  const palavras = texto.toLowerCase().split(" ");
+
+  palavras.forEach(p => {
+    if (p.length < 4) return;
+
+    likedKeywords[p] = (likedKeywords[p] || 0) + 1;
+  });
 }
 
-// Adicionar comentário
-function addComment(postId) {
-  const input = document.getElementById(`comment-input-${postId}`);
-  const texto = input.value.trim();
-  if (!texto) return alert("Escreva um comentário.");
+// pontuação de recomendação
+function calcularScore(texto) {
+  const palavras = texto.toLowerCase().split(" ");
+  let score = 0;
 
-  const comentariosRef = db.collection("postagens").doc(postId).collection("comentarios");
+  palavras.forEach(p => {
+    if (likedKeywords[p]) {
+      score += likedKeywords[p];
+    }
+  });
 
-  comentariosRef.add({
-    nomeCanal: currentUser,
-    texto,
-    data: firebase.firestore.FieldValue.serverTimestamp()
-  }).then(() => {
-    input.value = "";
-  }).catch(err => alert("Erro ao comentar: " + err.message));
+  return score;
 }
 
-// Carregar posts
+// ================= CARREGAR POSTS =================
 function loadPosts() {
   db.collection("postagens")
     .orderBy("data", "desc")
     .onSnapshot(snapshot => {
-      feed.innerHTML = "";
-      if (snapshot.empty) {
-        feed.innerHTML = "<p>Nenhuma postagem encontrada.</p>";
-        return;
-      }
+
+      let posts = [];
 
       snapshot.forEach(doc => {
-        const post = doc.data();
-        const postId = doc.id;
+        const data = doc.data();
+        posts.push({
+          id: doc.id,
+          ...data,
+          score: calcularScore(data.texto)
+        });
+      });
+
+      // 🔥 ordenar pelo algoritmo
+      posts.sort((a, b) => b.score - a.score);
+
+      feed.innerHTML = "";
+
+      posts.forEach(post => {
         const likeCount = post.curtidas ? Object.keys(post.curtidas).length : 0;
         const liked = post.curtidas && post.curtidas[currentUser];
+
+        const isYou = post.nomeCanal === currentUser;
 
         const div = document.createElement("div");
         div.className = "post";
 
         div.innerHTML = `
-          <div><strong>${post.nomeCanal}</strong></div>
-          <p>${post.texto}</p>
-          <button class="like-btn ${liked ? 'liked' : ''}" onclick="toggleLike('${postId}')">
+          ${isYou ? '<div class="you-tag">Você</div>' : ''}
+          <strong>${post.nomeCanal}</strong>
+          <p>${formatText(post.texto)}</p>
+
+          <button onclick="toggleLike('${post.id}', \`${post.texto}\`)">
             ${liked ? 'Curtido' : 'Curtir'}
           </button>
-          <span>${likeCount} curtida${likeCount !== 1 ? 's' : ''}</span>
-          <button class="secondary-btn" onclick="toggleComments('${postId}')">Ver Comentários</button>
-          <div id="comments-${postId}" class="comments" style="display:none; margin-top:10px;">
-            <div id="comments-list-${postId}">Carregando comentários...</div>
-            <input type="text" id="comment-input-${postId}" placeholder="Escreva um comentário..." />
-            <button onclick="addComment('${postId}')">Comentar</button>
-          </div>
+
+          <span>${likeCount} curtidas</span>
         `;
 
         feed.appendChild(div);
-
-        loadComments(postId);
       });
-    }, err => {
-      alert("Erro ao carregar postagens: " + err.message);
     });
 }
 
-// Carregar comentários
-function loadComments(postId) {
-  const commentsListDiv = document.getElementById(`comments-list-${postId}`);
-  const comentariosRef = db.collection("postagens").doc(postId).collection("comentarios").orderBy("data", "asc");
-
-  comentariosRef.onSnapshot(snapshot => {
-    if (snapshot.empty) {
-      commentsListDiv.innerHTML = "<p>Sem comentários</p>";
-      return;
-    }
-
-    const commentsHTML = [];
-    snapshot.forEach(doc => {
-      const c = doc.data();
-      commentsHTML.push(`
-        <div class="comment">
-          <strong>${c.nomeCanal}</strong>: ${c.texto}
-        </div>
-      `);
-    });
-
-    commentsListDiv.innerHTML = commentsHTML.join("");
-  }, err => {
-    commentsListDiv.innerHTML = "<p>Erro ao carregar comentários</p>";
-    console.error(err);
+// ================= SALVAR DADOS =================
+async function salvarDados() {
+  await db.collection("dados").doc(currentUser).set({
+    likedKeywords
   });
 }
 
-// ========== NOTIFICAÇÕES PUSH ==========
+// ================= CARREGAR DADOS =================
+async function carregarDados() {
+  const doc = await db.collection("dados").doc(currentUser).get();
 
-function setupMessaging() {
-  if (!messaging) return;
-
-  navigator.serviceWorker.register('/sl-post/firebase-messaging-sw.js')
-    .then(registration => {
-      console.log("Service Worker registrado com sucesso:", registration);
-
-      return Notification.requestPermission();
-    })
-    .then(permission => {
-      if (permission !== "granted") {
-        console.warn("Permissão negada para notificações.");
-        return;
-      }
-      console.log("Permissão concedida para notificações");
-
-      return messaging.getToken({
-        vapidKey: 'BCHIi6jYJGzVhPQnKwUzDy8gDfHcFQlT9sWzVJpKuV7C9rL8E0NkK7BkRMA'
-      });
-    })
-    .then(token => {
-      if (!token) {
-        console.warn("Token FCM não foi obtido.");
-        return;
-      }
-      console.log("Token FCM obtido:", token);
-      // Envie para backend se quiser
-    })
-    .catch(err => {
-      console.error("Erro ao configurar notificações:", err);
-    });
-
-  messaging.onMessage(payload => {
-    console.log("Mensagem recebida em primeiro plano:", payload);
-    const { title, body } = payload.notification;
-
-    if (Notification.permission === "granted") {
-      new Notification(title, { body });
-    }
-  });
+  if (doc.exists) {
+    likedKeywords = doc.data().likedKeywords || {};
+  }
 }
