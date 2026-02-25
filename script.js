@@ -14,11 +14,7 @@ const db = firebase.firestore();
 // ================= VARIÁVEIS =================
 let currentUser = null;
 let likedKeywords = {};
-let lastDoc = null;
-let loading = false;
-let finished = false;
-
-const POSTS_POR_CARGA = 10;
+let postsBase = [];
 
 // elementos
 const userNameInput = document.getElementById("userName");
@@ -46,14 +42,12 @@ btnEnter.onclick = async () => {
   postForm.style.display = "block";
 
   await carregarDados();
+  await carregarPosts();
 
   feed.innerHTML = "";
-  lastDoc = null;
-  finished = false;
+  gerarFeed();
 
-  carregarMaisPosts();
-
-  window.addEventListener("scroll", verificarScroll);
+  window.addEventListener("scroll", scrollFeed);
 };
 
 // ================= POSTAR =================
@@ -69,6 +63,10 @@ btnPost.onclick = async () => {
   });
 
   document.getElementById("newPost").value = "";
+
+  await carregarPosts();
+  feed.innerHTML = "";
+  gerarFeed();
 };
 
 // ================= LIKE =================
@@ -84,103 +82,78 @@ async function toggleLike(postId, texto) {
       delete likes[currentUser];
     } else {
       likes[currentUser] = true;
-
-      // 🧠 aprende palavras
-      aprenderTexto(texto);
+      aprenderTexto(texto); // 🧠 aprende
     }
 
     t.update(ref, { curtidas: likes });
   });
 
   salvarDados();
+
+  // atualiza feed
+  await carregarPosts();
+  feed.innerHTML = "";
+  gerarFeed();
 }
 
 // ================= ALGORITMO =================
-
-// aprender palavras
 function aprenderTexto(texto) {
   const palavras = texto.toLowerCase().split(/\W+/);
 
   palavras.forEach(p => {
     if (p.length < 4) return;
-
     likedKeywords[p] = (likedKeywords[p] || 0) + 1;
   });
 }
 
-// score inteligente
 function calcularScore(post) {
   let score = 0;
 
   const palavras = post.texto.toLowerCase().split(/\W+/);
 
-  // 1. palavras que você gosta
   palavras.forEach(p => {
     if (likedKeywords[p]) {
       score += likedKeywords[p] * 5;
     }
   });
 
-  // 2. popularidade
   const likes = post.curtidas ? Object.keys(post.curtidas).length : 0;
   score += likes * 2;
 
-  // 3. tempo (posts novos sobem)
   if (post.data) {
-    const agora = Date.now();
-    const tempoPost = post.data.toDate().getTime();
-    const horas = (agora - tempoPost) / (1000 * 60 * 60);
-
-    score += Math.max(0, 20 - horas); // perde relevância com o tempo
+    const horas = (Date.now() - post.data.toDate()) / (1000 * 60 * 60);
+    score += Math.max(0, 20 - horas);
   }
-
-  // 4. aleatoriedade (não ficar repetitivo)
-  score += Math.random() * 5;
 
   return score;
 }
 
+function misturarPosts(posts) {
+  return posts.sort((a, b) => {
+    const scoreA = calcularScore(a) + Math.random() * 10;
+    const scoreB = calcularScore(b) + Math.random() * 10;
+    return scoreB - scoreA;
+  });
+}
+
 // ================= CARREGAR POSTS =================
-async function carregarMaisPosts() {
-  if (loading || finished) return;
-  loading = true;
+async function carregarPosts() {
+  const snapshot = await db.collection("postagens").get();
 
-  let query = db.collection("postagens")
-    .orderBy("data", "desc")
-    .limit(POSTS_POR_CARGA);
-
-  if (lastDoc) {
-    query = query.startAfter(lastDoc);
-  }
-
-  const snapshot = await query.get();
-
-  if (snapshot.empty) {
-    finished = true;
-    loading = false;
-    return;
-  }
-
-  lastDoc = snapshot.docs[snapshot.docs.length - 1];
-
-  let posts = [];
+  postsBase = [];
 
   snapshot.forEach(doc => {
-    const data = doc.data();
-
-    posts.push({
+    postsBase.push({
       id: doc.id,
-      ...data,
-      score: calcularScore(data)
+      ...doc.data()
     });
   });
+}
 
-  // 🔥 ordena pelo score
-  posts.sort((a, b) => b.score - a.score);
-
-  renderPosts(posts);
-
-  loading = false;
+// ================= GERAR FEED =================
+function gerarFeed() {
+  const misturados = misturarPosts([...postsBase]);
+  renderPosts(misturados);
 }
 
 // ================= RENDER =================
@@ -193,41 +166,41 @@ function renderPosts(posts) {
     const div = document.createElement("div");
     div.className = "post";
 
+    // estrutura sem onclick
     div.innerHTML = `
       ${isYou ? '<div class="you-tag">Você</div>' : ''}
       <strong>${post.nomeCanal}</strong>
       <p>${formatText(post.texto)}</p>
-
-      <button onclick="toggleLike('${post.id}', \`${post.texto}\`)">
-        ${liked ? 'Curtido' : 'Curtir'}
-      </button>
-
+      <button class="like-btn">${liked ? 'Curtido' : 'Curtir'}</button>
       <span>${likeCount} curtidas</span>
     `;
+
+    const btn = div.querySelector(".like-btn");
+
+    // 🔥 evento correto (SEM BUG)
+    btn.addEventListener("click", () => {
+      toggleLike(post.id, post.texto);
+    });
 
     feed.appendChild(div);
   });
 }
 
-// ================= SCROLL INFINITO =================
-function verificarScroll() {
-  const scrollTop = window.scrollY;
-  const altura = document.body.offsetHeight;
-  const tela = window.innerHeight;
-
-  if (scrollTop + tela >= altura - 200) {
-    carregarMaisPosts();
+// ================= SCROLL =================
+function scrollFeed() {
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
+    gerarFeed(); // adiciona mais posts misturados
   }
 }
 
-// ================= SALVAR DADOS =================
+// ================= SALVAR =================
 async function salvarDados() {
   await db.collection("dados").doc(currentUser).set({
     likedKeywords
   });
 }
 
-// ================= CARREGAR DADOS =================
+// ================= CARREGAR =================
 async function carregarDados() {
   const doc = await db.collection("dados").doc(currentUser).get();
 
