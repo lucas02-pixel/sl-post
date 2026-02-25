@@ -16,7 +16,6 @@ let currentUser = null;
 let likedKeywords = {};
 let postsBase = [];
 
-// elementos
 const userNameInput = document.getElementById("userName");
 const btnEnter = document.getElementById("btnEnter");
 const postForm = document.getElementById("postForm");
@@ -42,12 +41,7 @@ btnEnter.onclick = async () => {
   postForm.style.display = "block";
 
   await carregarDados();
-  await carregarPosts();
-
-  feed.innerHTML = "";
-  gerarFeed();
-
-  window.addEventListener("scroll", scrollFeed);
+  carregarPostsRealtime();
 };
 
 // ================= POSTAR =================
@@ -55,45 +49,53 @@ btnPost.onclick = async () => {
   const texto = document.getElementById("newPost").value.trim();
   if (!texto) return alert("Escreva algo");
 
-  await db.collection("postagens").add({
-    texto,
-    nomeCanal: currentUser,
-    data: firebase.firestore.FieldValue.serverTimestamp(),
-    curtidas: {}
-  });
+  try {
+    await db.collection("postagens").add({
+      texto,
+      nomeCanal: currentUser,
+      data: firebase.firestore.FieldValue.serverTimestamp(),
+      curtidas: {}
+    });
 
-  document.getElementById("newPost").value = "";
+    document.getElementById("newPost").value = "";
 
-  await carregarPosts();
-  feed.innerHTML = "";
-  gerarFeed();
+  } catch (err) {
+    console.error(err);
+    alert("Erro ao postar: " + err.message);
+  }
 };
 
 // ================= LIKE =================
 async function toggleLike(postId, texto) {
+  console.log("clicou no like:", postId);
+
   const ref = db.collection("postagens").doc(postId);
 
-  await db.runTransaction(async (t) => {
-    const doc = await t.get(ref);
-    const data = doc.data();
-    const likes = data.curtidas || {};
+  try {
+    await db.runTransaction(async (t) => {
+      const doc = await t.get(ref);
 
-    if (likes[currentUser]) {
-      delete likes[currentUser];
-    } else {
-      likes[currentUser] = true;
-      aprenderTexto(texto); // 🧠 aprende
-    }
+      if (!doc.exists) throw "Post não existe";
 
-    t.update(ref, { curtidas: likes });
-  });
+      const data = doc.data();
+      const likes = data.curtidas || {};
 
-  salvarDados();
+      if (likes[currentUser]) {
+        delete likes[currentUser];
+      } else {
+        likes[currentUser] = true;
+        aprenderTexto(texto);
+      }
 
-  // atualiza feed
-  await carregarPosts();
-  feed.innerHTML = "";
-  gerarFeed();
+      t.update(ref, { curtidas: likes });
+    });
+
+    salvarDados();
+
+  } catch (err) {
+    console.error("ERRO LIKE:", err);
+    alert("Erro ao curtir: " + err);
+  }
 }
 
 // ================= ALGORITMO =================
@@ -136,29 +138,31 @@ function misturarPosts(posts) {
   });
 }
 
-// ================= CARREGAR POSTS =================
-async function carregarPosts() {
-  const snapshot = await db.collection("postagens").get();
+// ================= REALTIME =================
+function carregarPostsRealtime() {
+  db.collection("postagens").onSnapshot(snapshot => {
 
-  postsBase = [];
+    postsBase = [];
 
-  snapshot.forEach(doc => {
-    postsBase.push({
-      id: doc.id,
-      ...doc.data()
+    snapshot.forEach(doc => {
+      postsBase.push({
+        id: doc.id,
+        ...doc.data()
+      });
     });
+
+    renderFeed();
   });
 }
 
-// ================= GERAR FEED =================
-function gerarFeed() {
-  const misturados = misturarPosts([...postsBase]);
-  renderPosts(misturados);
-}
-
 // ================= RENDER =================
-function renderPosts(posts) {
-  posts.forEach(post => {
+function renderFeed() {
+  feed.innerHTML = "";
+
+  const postsOrdenados = misturarPosts([...postsBase]);
+
+  postsOrdenados.forEach(post => {
+
     const likeCount = post.curtidas ? Object.keys(post.curtidas).length : 0;
     const liked = post.curtidas && post.curtidas[currentUser];
     const isYou = post.nomeCanal === currentUser;
@@ -166,18 +170,18 @@ function renderPosts(posts) {
     const div = document.createElement("div");
     div.className = "post";
 
-    // estrutura sem onclick
+    const btnText = liked ? "Curtido" : "Curtir";
+
     div.innerHTML = `
       ${isYou ? '<div class="you-tag">Você</div>' : ''}
       <strong>${post.nomeCanal}</strong>
       <p>${formatText(post.texto)}</p>
-      <button class="like-btn">${liked ? 'Curtido' : 'Curtir'}</button>
+      <button class="like-btn">${btnText}</button>
       <span>${likeCount} curtidas</span>
     `;
 
     const btn = div.querySelector(".like-btn");
 
-    // 🔥 evento correto (SEM BUG)
     btn.addEventListener("click", () => {
       toggleLike(post.id, post.texto);
     });
@@ -186,21 +190,13 @@ function renderPosts(posts) {
   });
 }
 
-// ================= SCROLL =================
-function scrollFeed() {
-  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
-    gerarFeed(); // adiciona mais posts misturados
-  }
-}
-
-// ================= SALVAR =================
+// ================= DADOS =================
 async function salvarDados() {
   await db.collection("dados").doc(currentUser).set({
     likedKeywords
   });
 }
 
-// ================= CARREGAR =================
 async function carregarDados() {
   const doc = await db.collection("dados").doc(currentUser).get();
 
