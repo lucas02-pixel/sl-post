@@ -67,15 +67,12 @@ btnPost.onclick = async () => {
 
 // ================= LIKE =================
 async function toggleLike(postId, texto) {
-  console.log("clicou no like:", postId);
-
   const ref = db.collection("postagens").doc(postId);
 
   try {
     await db.runTransaction(async (t) => {
       const doc = await t.get(ref);
-
-      if (!doc.exists) throw "Post não existe";
+      if (!doc.exists) return;
 
       const data = doc.data();
       const likes = data.curtidas || {};
@@ -93,8 +90,7 @@ async function toggleLike(postId, texto) {
     salvarDados();
 
   } catch (err) {
-    console.error("ERRO LIKE:", err);
-    alert("Erro ao curtir: " + err);
+    console.error("Erro ao curtir:", err);
   }
 }
 
@@ -111,6 +107,7 @@ function aprenderTexto(texto) {
 function calcularScore(post) {
   let score = 0;
 
+  // palavras
   const palavras = post.texto.toLowerCase().split(/\W+/);
 
   palavras.forEach(p => {
@@ -119,47 +116,51 @@ function calcularScore(post) {
     }
   });
 
+  // likes
   const likes = post.curtidas ? Object.keys(post.curtidas).length : 0;
   score += likes * 2;
 
-  if (post.data) {
-    const horas = (Date.now() - post.data.toDate()) / (1000 * 60 * 60);
+  // tempo (CORRIGIDO)
+  if (post.data && post.data.toDate) {
+    const horas = (Date.now() - post.data.toDate().getTime()) / (1000 * 60 * 60);
     score += Math.max(0, 20 - horas);
   }
+
+  // aleatoriedade (evita feed travado)
+  score += Math.random() * 10;
 
   return score;
 }
 
-function misturarPosts(posts) {
-  return posts.sort((a, b) => {
-    const scoreA = calcularScore(a) + Math.random() * 10;
-    const scoreB = calcularScore(b) + Math.random() * 10;
-    return scoreB - scoreA;
-  });
-}
-
 // ================= REALTIME =================
 function carregarPostsRealtime() {
-  db.collection("postagens").onSnapshot(snapshot => {
+  db.collection("postagens")
+    .onSnapshot(snapshot => {
 
-    postsBase = [];
+      postsBase = [];
 
-    snapshot.forEach(doc => {
-      postsBase.push({
-        id: doc.id,
-        ...doc.data()
+      snapshot.forEach(doc => {
+        postsBase.push({
+          id: doc.id,
+          ...doc.data()
+        });
       });
-    });
 
-    renderFeed();
-  });
+      renderFeed();
+
+    }, err => {
+      console.error("Erro ao carregar posts:", err);
+    });
 }
 
 // ================= RENDER =================
 function renderFeed() {
   feed.innerHTML = "";
 
-  const postsOrdenados = misturarPosts([...postsBase]);
+  // ordenar pelo algoritmo
+  const postsOrdenados = [...postsBase].sort((a, b) => {
+    return calcularScore(b) - calcularScore(a);
+  });
 
   postsOrdenados.forEach(post => {
 
@@ -170,13 +171,11 @@ function renderFeed() {
     const div = document.createElement("div");
     div.className = "post";
 
-    const btnText = liked ? "Curtido" : "Curtir";
-
     div.innerHTML = `
       ${isYou ? '<div class="you-tag">Você</div>' : ''}
       <strong>${post.nomeCanal}</strong>
       <p>${formatText(post.texto)}</p>
-      <button class="like-btn">${btnText}</button>
+      <button class="like-btn">${liked ? 'Curtido' : 'Curtir'}</button>
       <span>${likeCount} curtidas</span>
     `;
 
@@ -192,15 +191,23 @@ function renderFeed() {
 
 // ================= DADOS =================
 async function salvarDados() {
-  await db.collection("dados").doc(currentUser).set({
-    likedKeywords
-  });
+  try {
+    await db.collection("dados").doc(currentUser).set({
+      likedKeywords
+    });
+  } catch (err) {
+    console.error("Erro ao salvar dados:", err);
+  }
 }
 
 async function carregarDados() {
-  const doc = await db.collection("dados").doc(currentUser).get();
+  try {
+    const doc = await db.collection("dados").doc(currentUser).get();
 
-  if (doc.exists) {
-    likedKeywords = doc.data().likedKeywords || {};
+    if (doc.exists) {
+      likedKeywords = doc.data().likedKeywords || {};
+    }
+  } catch (err) {
+    console.error("Erro ao carregar dados:", err);
   }
 }
