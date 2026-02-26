@@ -14,7 +14,7 @@ const db = firebase.firestore();
 // ================= VARIÁVEIS =================
 let currentUser = null;
 let likedKeywords = {};
-let postsBase = [];
+let postsBase = []; // todos os posts
 
 // elementos
 const userNameInput = document.getElementById("userName");
@@ -44,8 +44,7 @@ btnEnter.onclick = async () => {
   await carregarDados();
   await carregarPosts();
 
-  feed.innerHTML = "";
-  gerarFeed();
+  gerarFeed(); // 🔥 gera feed infinito
 
   window.addEventListener("scroll", scrollFeed);
 };
@@ -82,6 +81,7 @@ async function toggleLike(postId, texto) {
       delete likes[currentUser];
     } else {
       likes[currentUser] = true;
+
       aprenderTexto(texto); // 🧠 aprende
     }
 
@@ -89,14 +89,11 @@ async function toggleLike(postId, texto) {
   });
 
   salvarDados();
-
-  // atualiza feed
-  await carregarPosts();
-  feed.innerHTML = "";
-  gerarFeed();
 }
 
 // ================= ALGORITMO =================
+
+// aprende palavras
 function aprenderTexto(texto) {
   const palavras = texto.toLowerCase().split(/\W+/);
 
@@ -106,20 +103,24 @@ function aprenderTexto(texto) {
   });
 }
 
+// score
 function calcularScore(post) {
   let score = 0;
 
   const palavras = post.texto.toLowerCase().split(/\W+/);
 
+  // interesse do usuário
   palavras.forEach(p => {
     if (likedKeywords[p]) {
       score += likedKeywords[p] * 5;
     }
   });
 
+  // popularidade
   const likes = post.curtidas ? Object.keys(post.curtidas).length : 0;
   score += likes * 2;
 
+  // tempo
   if (post.data) {
     const horas = (Date.now() - post.data.toDate()) / (1000 * 60 * 60);
     score += Math.max(0, 20 - horas);
@@ -128,10 +129,12 @@ function calcularScore(post) {
   return score;
 }
 
+// mistura inteligente
 function misturarPosts(posts) {
   return posts.sort((a, b) => {
     const scoreA = calcularScore(a) + Math.random() * 10;
     const scoreB = calcularScore(b) + Math.random() * 10;
+
     return scoreB - scoreA;
   });
 }
@@ -153,6 +156,7 @@ async function carregarPosts() {
 // ================= GERAR FEED =================
 function gerarFeed() {
   const misturados = misturarPosts([...postsBase]);
+
   renderPosts(misturados);
 }
 
@@ -166,30 +170,27 @@ function renderPosts(posts) {
     const div = document.createElement("div");
     div.className = "post";
 
-    // estrutura sem onclick
     div.innerHTML = `
       ${isYou ? '<div class="you-tag">Você</div>' : ''}
       <strong>${post.nomeCanal}</strong>
       <p>${formatText(post.texto)}</p>
-      <button class="like-btn">${liked ? 'Curtido' : 'Curtir'}</button>
+
+      <button onclick="toggleLike('${post.id}', \`${post.texto}\`)">
+        ${liked ? 'Curtido' : 'Curtir'}
+      </button>
+
       <span>${likeCount} curtidas</span>
     `;
-
-    const btn = div.querySelector(".like-btn");
-
-    // 🔥 evento correto (SEM BUG)
-    btn.addEventListener("click", () => {
-      toggleLike(post.id, post.texto);
-    });
 
     feed.appendChild(div);
   });
 }
 
-// ================= SCROLL =================
+// ================= SCROLL INFINITO =================
 function scrollFeed() {
   if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
-    gerarFeed(); // adiciona mais posts misturados
+    // 🔥 adiciona mais posts misturados (loop infinito)
+    gerarFeed();
   }
 }
 
