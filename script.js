@@ -16,6 +16,7 @@ let currentUser = null;
 let likedKeywords = {};
 let postsBase = [];
 
+// elementos
 const userNameInput = document.getElementById("userName");
 const btnEnter = document.getElementById("btnEnter");
 const postForm = document.getElementById("postForm");
@@ -41,7 +42,12 @@ btnEnter.onclick = async () => {
   postForm.style.display = "block";
 
   await carregarDados();
-  carregarPostsRealtime();
+  await carregarPosts();
+
+  feed.innerHTML = "";
+  gerarFeed();
+
+  window.addEventListener("scroll", scrollFeed);
 };
 
 // ================= POSTAR =================
@@ -49,49 +55,45 @@ btnPost.onclick = async () => {
   const texto = document.getElementById("newPost").value.trim();
   if (!texto) return alert("Escreva algo");
 
-  try {
-    await db.collection("postagens").add({
-      texto,
-      nomeCanal: currentUser,
-      data: firebase.firestore.FieldValue.serverTimestamp(),
-      curtidas: {}
-    });
+  await db.collection("postagens").add({
+    texto,
+    nomeCanal: currentUser,
+    data: firebase.firestore.FieldValue.serverTimestamp(),
+    curtidas: {}
+  });
 
-    document.getElementById("newPost").value = "";
+  document.getElementById("newPost").value = "";
 
-  } catch (err) {
-    console.error(err);
-    alert("Erro ao postar: " + err.message);
-  }
+  await carregarPosts();
+  feed.innerHTML = "";
+  gerarFeed();
 };
 
 // ================= LIKE =================
 async function toggleLike(postId, texto) {
   const ref = db.collection("postagens").doc(postId);
 
-  try {
-    await db.runTransaction(async (t) => {
-      const doc = await t.get(ref);
-      if (!doc.exists) return;
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(ref);
+    const data = doc.data();
+    const likes = data.curtidas || {};
 
-      const data = doc.data();
-      const likes = data.curtidas || {};
+    if (likes[currentUser]) {
+      delete likes[currentUser];
+    } else {
+      likes[currentUser] = true;
+      aprenderTexto(texto); // 🧠 aprende
+    }
 
-      if (likes[currentUser]) {
-        delete likes[currentUser];
-      } else {
-        likes[currentUser] = true;
-        aprenderTexto(texto);
-      }
+    t.update(ref, { curtidas: likes });
+  });
 
-      t.update(ref, { curtidas: likes });
-    });
+  salvarDados();
 
-    salvarDados();
-
-  } catch (err) {
-    console.error("Erro ao curtir:", err);
-  }
+  // atualiza feed
+  await carregarPosts();
+  feed.innerHTML = "";
+  gerarFeed();
 }
 
 // ================= ALGORITMO =================
@@ -107,7 +109,6 @@ function aprenderTexto(texto) {
 function calcularScore(post) {
   let score = 0;
 
-  // palavras
   const palavras = post.texto.toLowerCase().split(/\W+/);
 
   palavras.forEach(p => {
@@ -116,54 +117,48 @@ function calcularScore(post) {
     }
   });
 
-  // likes
   const likes = post.curtidas ? Object.keys(post.curtidas).length : 0;
   score += likes * 2;
 
-  // tempo (CORRIGIDO)
-  if (post.data && post.data.toDate) {
-    const horas = (Date.now() - post.data.toDate().getTime()) / (1000 * 60 * 60);
+  if (post.data) {
+    const horas = (Date.now() - post.data.toDate()) / (1000 * 60 * 60);
     score += Math.max(0, 20 - horas);
   }
-
-  // aleatoriedade (evita feed travado)
-  score += Math.random() * 10;
 
   return score;
 }
 
-// ================= REALTIME =================
-function carregarPostsRealtime() {
-  db.collection("postagens")
-    .onSnapshot(snapshot => {
+function misturarPosts(posts) {
+  return posts.sort((a, b) => {
+    const scoreA = calcularScore(a) + Math.random() * 10;
+    const scoreB = calcularScore(b) + Math.random() * 10;
+    return scoreB - scoreA;
+  });
+}
 
-      postsBase = [];
+// ================= CARREGAR POSTS =================
+async function carregarPosts() {
+  const snapshot = await db.collection("postagens").get();
 
-      snapshot.forEach(doc => {
-        postsBase.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
+  postsBase = [];
 
-      renderFeed();
-
-    }, err => {
-      console.error("Erro ao carregar posts:", err);
+  snapshot.forEach(doc => {
+    postsBase.push({
+      id: doc.id,
+      ...doc.data()
     });
+  });
+}
+
+// ================= GERAR FEED =================
+function gerarFeed() {
+  const misturados = misturarPosts([...postsBase]);
+  renderPosts(misturados);
 }
 
 // ================= RENDER =================
-function renderFeed() {
-  feed.innerHTML = "";
-
-  // ordenar pelo algoritmo
-  const postsOrdenados = [...postsBase].sort((a, b) => {
-    return calcularScore(b) - calcularScore(a);
-  });
-
-  postsOrdenados.forEach(post => {
-
+function renderPosts(posts) {
+  posts.forEach(post => {
     const likeCount = post.curtidas ? Object.keys(post.curtidas).length : 0;
     const liked = post.curtidas && post.curtidas[currentUser];
     const isYou = post.nomeCanal === currentUser;
@@ -171,6 +166,7 @@ function renderFeed() {
     const div = document.createElement("div");
     div.className = "post";
 
+    // estrutura sem onclick
     div.innerHTML = `
       ${isYou ? '<div class="you-tag">Você</div>' : ''}
       <strong>${post.nomeCanal}</strong>
@@ -181,6 +177,7 @@ function renderFeed() {
 
     const btn = div.querySelector(".like-btn");
 
+    // 🔥 evento correto (SEM BUG)
     btn.addEventListener("click", () => {
       toggleLike(post.id, post.texto);
     });
@@ -189,25 +186,25 @@ function renderFeed() {
   });
 }
 
-// ================= DADOS =================
-async function salvarDados() {
-  try {
-    await db.collection("dados").doc(currentUser).set({
-      likedKeywords
-    });
-  } catch (err) {
-    console.error("Erro ao salvar dados:", err);
+// ================= SCROLL =================
+function scrollFeed() {
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
+    gerarFeed(); // adiciona mais posts misturados
   }
 }
 
-async function carregarDados() {
-  try {
-    const doc = await db.collection("dados").doc(currentUser).get();
+// ================= SALVAR =================
+async function salvarDados() {
+  await db.collection("dados").doc(currentUser).set({
+    likedKeywords
+  });
+}
 
-    if (doc.exists) {
-      likedKeywords = doc.data().likedKeywords || {};
-    }
-  } catch (err) {
-    console.error("Erro ao carregar dados:", err);
+// ================= CARREGAR =================
+async function carregarDados() {
+  const doc = await db.collection("dados").doc(currentUser).get();
+
+  if (doc.exists) {
+    likedKeywords = doc.data().likedKeywords || {};
   }
 }
